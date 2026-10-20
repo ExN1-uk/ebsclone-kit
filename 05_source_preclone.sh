@@ -3,7 +3,10 @@
 # stage (adpreclone appsTier) and makes appsutil.zip for the database tier (admkappsutil).
 # Run it when the source has been patched since its stage was made (the stage date is the adpreclone date).
 # A source whose stage is already at the PDB's code level (for example a DR copy staged after the last patch)
-# does not need this step.
+# does not need the stage refresh: run it with --appsutil-only. That skips adpreclone (which needs the source's
+# WebLogic AdminServer running) and only builds appsutil.zip, so the database server still gets tools at the
+# PDB's code level. Nothing is started on the source.
+ONLY_APPSUTIL=no; [ "${1:-}" = "--appsutil-only" ] && ONLY_APPSUTIL=yes
 . "$(dirname "$0")/lib.sh"
 need_user "$SRC_USER"
 SENV="$SRC_BASE/EBSapps.env"
@@ -15,6 +18,11 @@ unset -f which 2>/dev/null
 say "   source context $CONTEXT_NAME, run file system $RUN_BASE"
 [ "$(basename "$RUN_BASE")" = fs2 ] || warn "run edition is $(basename "$RUN_BASE"), the other steps assume fs2: set them to copy that folder"
 
+if [ "$ONLY_APPSUTIL" = yes ]; then
+  say "-- 1. adpreclone skipped (--appsutil-only): the stage stays as it is"
+  say "   $(ls -l --time-style=+%F "$COMMON_TOP/clone/FMW/FMW_Home.jar" 2>/dev/null | awk '{print "stage made "$6}')"
+  check "clone stage present" test -f "$COMMON_TOP/clone/bin/adcfgclone.pl"
+else
 ask_secret AP "APPS password (source)"; ask_secret WP "WebLogic password (source)"
 say "-- 1. adpreclone appsTier (about 5 minutes)"
 printf '%s\n%s\n' "$AP" "$WP" | WATCH_STDIN=1 run_watched "$LOG_DIR/adpreclone_$(date +%H%M%S).log" \
@@ -26,6 +34,7 @@ check "adpreclone printed 'Completed Stage'" grep -q 'Completed Stage' "$(ls -t 
 [ -n "$L" ] && check "StageAppsTier log says Completed Successfully ($L)" grep -q 'Completed Successfully' "$L"
 [ -n "$L" ] && check "no script in $L returned non-zero" bash -c "! grep -qE 'returning status [1-9]' '$L'"
 check "stage moveplan refreshed today" bash -c "[ \$(stat -c %Y '$COMMON_TOP/clone/FMW/WLS/plan/moveplan.xml') -gt \$(( \$(date +%s) - 86400 )) ]"
+fi
 
 say "-- 2. appsutil.zip for the database tier (25_db_register.sh takes it as its argument)"
 perl "$AD_TOP/bin/admkappsutil.pl" >>"$LOG" 2>&1

@@ -9,7 +9,6 @@ say "-- operating system"
 REL=$(cat /etc/oracle-release 2>/dev/null || cat /etc/redhat-release)
 say "   release: $REL"
 check "Oracle Linux / RHEL 8.2 or later" bash -c "echo '$REL' | grep -qE 'release 8\.([2-9]|[1-9][0-9])'"
-check "release files are genuine" bash -c "! ls /etc/*release.ebsbak 2>/dev/null | grep -q ."
 check "x86_64" test "$(uname -m)" = x86_64
 
 say "-- name and network"

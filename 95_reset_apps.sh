@@ -56,7 +56,7 @@ if [ $KEEP = yes ]; then
   ok "FMW_Home and inst removed, copied files kept: rerun from 40"
 else
   rm -rf "$NEW_BASE"
-  rm -f "$STATE_DIR"/30_* "$STATE_DIR"/40_* "$STATE_DIR"/60_* "$STATE_DIR"/need_spoof "$STATE_DIR"/*pairs*.txt
+  rm -f "$STATE_DIR"/30_* "$STATE_DIR"/40_* "$STATE_DIR"/60_* "$STATE_DIR"/*pairs*.txt
   ok "$NEW_BASE removed: rerun from 30"
 fi
 

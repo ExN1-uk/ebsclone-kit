@@ -35,16 +35,47 @@ SQL
   done_mark restore_point; ok "restore point taken"
 fi
 
-say "-- 2. open"
+say "-- 2. open, with the database job queue stopped first"
+# A copy of a live PDB carries the live system's scheduler jobs, and they start the moment it opens normally.
+# So it opens RESTRICTED first (no jobs run), job_queue_processes is set to 0 inside it, then it opens normally.
+# 90_reset_db.sh puts the old value back.
 sys_sql <<SQL | tee -a "$LOG"
+whenever sqlerror exit failure
 begin
   for r in (select 1 from v\$pdbs where name='${PDB}' and open_mode='MOUNTED') loop
+    execute immediate 'alter pluggable database ${PDB} open restricted';
+  end loop;
+end;
+/
+SQL
+[ "${PIPESTATUS[0]}" -eq 0 ] || die "could not open $PDB"
+if ! grep -q '^JQP ' "$BEFORE"; then
+  # a PDB's own parameter values live in the root's pdb_spfile$ (no row = it inherits the CDB value)
+  J=$(sys_sql <<SQL | tr -d '[:space:]'
+set heading off feedback off pages 0
+select nvl(max(replace(s.value\$,chr(39))),'DEFAULT') from pdb_spfile\$ s join v\$pdbs p on p.con_uid=s.pdb_uid
+ where p.name='${PDB}' and s.name='job_queue_processes';
+SQL
+)
+  echo "JQP ${J:-DEFAULT}" >> "$BEFORE"
+fi
+sys_sql <<SQL | tee -a "$LOG"
+whenever sqlerror exit failure
+alter session set container=${PDB};
+alter system set job_queue_processes=0 scope=both;
+select 'job_queue_processes '||value from v\$parameter where name='job_queue_processes';
+alter session set container=CDB\$ROOT;
+begin
+  for r in (select 1 from v\$pdbs where name='${PDB}' and restricted='YES') loop
+    execute immediate 'alter pluggable database ${PDB} close immediate';
     execute immediate 'alter pluggable database ${PDB} open';
   end loop;
 end;
 /
 select name, open_mode, restricted from v\$pdbs where name='${PDB}';
 SQL
+[ "${PIPESTATUS[0]}" -eq 0 ] || die "could not stop the job queue in $PDB"
+ok "job queue stopped in $PDB (job_queue_processes=0; 90_reset_db.sh restores it)"
 RESTRICTED=$(echo "select restricted from v\$pdbs where name='${PDB}';" | sys_sql | grep -E 'YES|NO' | tr -d ' ')
 
 if [ "$RESTRICTED" = "YES" ] && ! is_done datapatch; then

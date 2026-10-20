@@ -59,25 +59,10 @@ check "rules come back after a reboot (ebsclone-isolation.service enabled)" syst
 gate
 systemctl is-active -q firewalld && warn "firewalld is running: after a firewall-cmd --reload, run: systemctl restart ebsclone-isolation"
 
-restore_release() {
-  if ls /etc/*release.ebsbak >/dev/null 2>&1; then
-    \cp -p /etc/oracle-release.ebsbak /etc/oracle-release && \cp -p /etc/redhat-release.ebsbak /etc/redhat-release && rm -f /etc/*release.ebsbak
-    say "release files restored: $(cat /etc/oracle-release)"
-  fi
-}
-on_exit restore_release
-
 if ! is_done adcfgclone; then
   [ -e "$NEW_BASE/fs2/FMW_Home" ] || [ -e "$NEW_BASE/fs2/inst" ] && {
     confirm "A previous attempt left $NEW_BASE/fs2/FMW_Home or inst. Remove them and start again?" || die "stopped"
     rm -rf "$NEW_BASE/fs2/FMW_Home" "$NEW_BASE/fs2/inst"; }
-
-  if [ "$(cat "$STATE_DIR/need_spoof" 2>/dev/null)" = "yes" ]; then
-    warn "WORKAROUND: release files set to 7.9 for adcfgclone only (source lacks patch 33471111). Put back automatically."
-    cp -p /etc/oracle-release /etc/oracle-release.ebsbak; cp -p /etc/redhat-release /etc/redhat-release.ebsbak
-    echo 'Oracle Linux Server release 7.9' > /etc/oracle-release
-    echo 'Red Hat Enterprise Linux Server release 7.9 (Maipo)' > /etc/redhat-release
-  fi
 
   say "-- 2. adcfgclone appsTier, non-interactive: every answer comes from a pairs file, no questions to get wrong"
   # Oracle's documented form (adcfgclone.pl usage, 1383621.1):
@@ -118,7 +103,6 @@ if ! is_done adcfgclone; then
   printf '%s\n%s\n' "$AP" "$WP" | WATCH_STDIN=1 run_watched "$ACLOG" su - "$APPS_OWNER" -c \
     "cd '$CLONEBIN' && perl adcfgclone.pl component=appsTier pairsfile=$PF addnode=no dualfs=no"
   RC=$?
-  restore_release
   [ $RC -eq 0 ] || warn "adcfgclone exited rc=$RC"
   L=$(ls -t "$NEW_BASE"/fs2/inst/apps/*/admin/log/clone/ApplyAppsTier_*.log 2>/dev/null | head -1)
   [ -n "$L" ] || die "no ApplyAppsTier log: adcfgclone did not get far (see $ACLOG)"

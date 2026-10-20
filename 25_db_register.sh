@@ -66,7 +66,7 @@ fi
 
 if ! is_done txk; then
 say "-- 2. txkPostPDBCreationTasks (about 12 minutes, restarts the whole CDB: every PDB in it blinks)"
-warn "the CDB restarts open every PDB in it; step 4 closes $OTHER_PDBS again"
+[ -n "$OTHER_PDBS" ] && warn "the CDB restarts open every PDB in it; step 4 closes $OTHER_PDBS again"
 TXKLOG="$WORK_DIR/txk_${PDB}_$(date +%H%M%S).log"
 # passwords go on stdin (APPS, then SYSTEM): never on the command line, never in a file
 printf '%s\n%s\n' "$AP" "$SP" | WATCH_STDIN=1 run_watched "$TXKLOG" perl txkPostPDBCreationTasks.pl -dboraclehome="$ORACLE_HOME" \

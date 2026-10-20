@@ -43,7 +43,13 @@ if ! is_done copy; then
     --exclude '/fs2/inst' --exclude '/fs2/FMW_Home' -e "ssh -i $K -o BatchMode=yes" \
     "$SRC_USER@$SRC_HOST:$SRC_BASE/fs2" "$SRC_USER@$SRC_HOST:$SRC_BASE/fs_ne" "$NEW_BASE/" || die "copy failed"
   # the source's own pairs file (in inst, which is not copied): 40 turns it into the answers for adcfgclone
+  # a source that was itself cloned can hold other nodes' contexts too (a DR copy keeps PROD's): keep its own
   SRCP=$(ssh -n -i "$K" -o BatchMode=yes "$SRC_USER@$SRC_HOST" "for d in $SRC_BASE/fs2/inst/apps/*/; do c=\$(basename \$d); [ -f \$d/appl/admin/\${c}_run.txt ] && echo \$d/appl/admin/\${c}_run.txt; done")
+  if [ "$(echo "$SRCP" | grep -c .)" -gt 1 ]; then
+    SRCH=$(ssh -n -i "$K" -o BatchMode=yes "$SRC_USER@$SRC_HOST" "hostname -s" | tr '[:upper:]' '[:lower:]')
+    say "   more than one pairs file on the source; using the one for its own host ($SRCH)"
+    SRCP=$(echo "$SRCP" | grep -i "_${SRCH}_run.txt\$")
+  fi
   [ "$(echo "$SRCP" | grep -c .)" -eq 1 ] || die "expected one <context>_run.txt pairs file on the source, found: ${SRCP:-none}"
   scp -q -i "$K" -o BatchMode=yes "$SRC_USER@$SRC_HOST:$SRCP" "$STATE_DIR/source_pairs.txt" || die "could not fetch $SRCP"
   ok "source pairs file saved as $STATE_DIR/source_pairs.txt"
@@ -81,11 +87,6 @@ if ! knows_ol8 "$SP" && [ -n "${PATCH_33471111_DIR:-}" ]; then
 fi
 if knows_ol8 "$SP"; then
   ok "stage check files know Oracle Linux 8"
-  echo "no" > "$STATE_DIR/need_spoof"
-elif [ "$ALLOW_RELEASE_SPOOF" = "yes" ]; then
-  warn "stage has no OL8-aware check files: patch 33471111 is not on the source."
-  warn "ALLOW_RELEASE_SPOOF=yes: 40 will set the release files to 7.9 for adcfgclone only and put them back."
-  echo "yes" > "$STATE_DIR/need_spoof"
 else
   die "the Oracle Linux 8 check files are missing. Unzip patch 33471111 on this VM and set PATCH_33471111_DIR to it, then rerun this step."
 fi

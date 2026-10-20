@@ -14,12 +14,22 @@ MODE=$(sed -n 's/^MODE //p' "$BEFORE" 2>/dev/null)
 # check the restore point exists BEFORE closing anything (a second run, or one after --final, must not close the PDB)
 N=$(printf "set heading off feedback off\nselect count(*) from v\$restore_point where name='%s';\n" "$RESTORE_POINT" | sys_sql | tr -d '[:space:]')   # sqlplus pads numbers with a TAB
 [ "$N" = "1" ] || die "restore point $RESTORE_POINT does not exist (already flashed back and dropped with --final?). Nothing changed."
+# the job queue setting 20 changed lives outside the PDB's datafiles, so flashback does not undo it
+JQ=$(sed -n 's/^JQP //p' "$BEFORE" 2>/dev/null)
+case "$JQ" in
+  "") JQP_SQL="" ;;
+  DEFAULT) JQP_SQL="alter system reset job_queue_processes scope=spfile;" ;;
+  *) JQP_SQL="alter system set job_queue_processes=$JQ scope=spfile;" ;;
+esac
 confirm "Flash $PDB back to $RESTORE_POINT? Everything done to it since is lost." || die "not confirmed"
 sys_sql <<SQL | tee -a "$LOG"
 whenever sqlerror exit failure
 alter pluggable database ${PDB} close immediate;
 flashback pluggable database ${PDB} to restore point ${RESTORE_POINT};
 alter pluggable database ${PDB} open resetlogs;
+alter session set container=${PDB};
+${JQP_SQL}
+alter session set container=CDB\$ROOT;
 alter pluggable database ${PDB} close immediate;
 alter pluggable database ${PDB} discard state;
 SQL
