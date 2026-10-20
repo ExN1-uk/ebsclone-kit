@@ -12,7 +12,7 @@ if ! is_done copy; then
   [ -f "$K" ] || ssh-keygen -q -t ed25519 -N "" -C "ebsclone-tmp-$(hostname -s)" -f "$K"
   # a temporary key for the copy: installed with ONE root password prompt, removed again by itself after the copy
   if ! ssh -n -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -i "$K" "$SRC_USER@$SRC_HOST" true 2>/dev/null; then
-    say "   one-time: the root password of $SRC_HOST, to put a temporary copy key on $SRC_USER there"
+    say "   one-time: a temporary copy key goes on the source. The next prompt wants the root password of the SOURCE ($SRC_HOST), not of this VM"
     ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "root@$SRC_HOST" \
       "su - $SRC_USER -c 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'" < "$K.pub" \
       || die "could not install the copy key on $SRC_HOST (wrong root password?)"

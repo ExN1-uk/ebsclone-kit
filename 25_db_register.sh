@@ -12,7 +12,8 @@ ZIP="${1:-}"
 if [ "$ZIP" = "--from-source" ] && ! is_done appsutil; then
   # fetch the zip 05_source_preclone.sh made on the source: one root password prompt
   mkdir -p "$WORK_DIR"; ZIP="$WORK_DIR/appsutil.zip"
-  say "-- 0. fetching appsutil.zip from $SRC_HOST (one-time: its root password)"
+  say "-- 0. fetching appsutil.zip from the source apps host $SRC_HOST"
+  say "   the next prompt wants the root password of the SOURCE ($SRC_HOST), not of this database server"
   ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "root@$SRC_HOST" \
     "cat \$(ls -t $SRC_BASE/fs2/inst/apps/*/admin/out/appsutil.zip | head -1)" > "$ZIP" && unzip -tq "$ZIP" >/dev/null \
     || die "could not fetch a valid appsutil.zip from $SRC_HOST (did 05_source_preclone.sh run there?)"
