@@ -53,6 +53,17 @@ export PERL5LIB="$ORACLE_HOME/appsutil/perl:$(ls -d $ORACLE_HOME/perl/lib/*/ | t
 cd "$ORACLE_HOME/appsutil" && . ./txkSetCfgCDB.env -dboraclehome="$ORACLE_HOME" >/dev/null
 cd "$ORACLE_HOME/appsutil/bin"
 # done once: a rerun after a later check failed must not restart the CDB again
+if ! is_done setup_clean; then
+  # The copy carries the source's node registrations (fnd_nodes, context files: on a copy of PROD, PROD's apps
+  # and admin nodes). With a second admin node registered, adop's get_node_type fails with ORA-01422 and
+  # adcfgclone ends "AutoConfig run recorded some errors". Oracle's clean-up for a clone, run as APPS (it refuses
+  # SYS). txk and adcfgclone then register this database and the new apps tier as the only nodes.
+  say "-- 1b. clear the node registrations the copy brought along (fnd_conc_clone.setup_clean)"
+  OUT=$(printf 'connect apps/"%s"@%s\nexec fnd_conc_clone.setup_clean;\ncommit;\nexit\n' "$AP" "//$DB_SCAN:$DB_PORT/$PDB" | sqlplus -s -L /nolog 2>&1)
+  echo "$OUT" | grep -q "PL/SQL procedure successfully completed" || { echo "$OUT" | tee -a "$LOG"; die "fnd_conc_clone.setup_clean failed (see above)"; }
+  done_mark setup_clean; ok "old node registrations cleared"
+fi
+
 if ! is_done txk; then
 say "-- 2. txkPostPDBCreationTasks (about 12 minutes, restarts the whole CDB: every PDB in it blinks)"
 warn "the CDB restarts open every PDB in it; step 4 closes $OTHER_PDBS again"
