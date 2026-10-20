@@ -1,0 +1,55 @@
+# ebsclone settings: names and addresses only, NEVER passwords.
+# The same file goes on the database server, the new apps VM and (when step 05 is used) the source apps host.
+
+# ---------- Database (already exists: we configure it, we do not copy it) ----------
+PDB=CHANGEME                       # the PDB the new apps tier will run on
+CDB_NAME=CHANGEME                  # the container database that holds it
+CDB_SID=CHANGEME                   # its instance name on the database server
+CDB_UNIQUE=CHANGEME                # its db_unique_name
+DB_HOST=CHANGEME                   # database server short host name (no domain)
+DB_IP=CHANGEME                     # database server IP address
+DB_SCAN=CHANGEME                   # full name the apps tier connects to (SCAN, or the host's full name)
+DB_PORT=1521                       # listener port
+DB_OH=CHANGEME                     # database Oracle home, e.g. /u01/app/oracle/product/19.0.0.0/dbhome_1
+GRID_LISTENER=CHANGEME             # listener.ora that serves the database, e.g. <grid home>/network/admin/listener.ora
+OTHER_PDBS=""                      # other PDBs in the same CDB that must stay closed (space separated)
+RESTORE_POINT=BEFORE_EBSCLONE      # guaranteed restore point taken before the first change
+WORK_DIR=/u01/ebsclone/work        # working folder on the database server
+
+# ---------- Source of the apps files (an apps tier at the SAME code level as the PDB) ----------
+SRC_HOST=CHANGEME                  # source apps host (name or IP)
+SRC_USER=applmgr                   # apps owner on the source
+SRC_BASE=CHANGEME                  # source apps base folder, e.g. /u01/EBSPROD (holds fs1, fs2, fs_ne)
+SRC_SERVICE=CHANGEME               # database service the source move plan names (grep SERVICE_NAME in its moveplan.xml)
+SRC_DB_HOST_RE=CHANGEME            # regex for the database host(s) the source move plan names
+
+# ---------- New apps VM ----------
+APPS_HOST=CHANGEME                 # short host name of the new VM (full name must be 30 characters or less)
+APPS_IP=CHANGEME                   # its IP address
+NET_DOMAIN=CHANGEME                # DNS domain, e.g. example.local
+NEW_BASE=CHANGEME                  # new apps base folder, e.g. /u01/EBSTRAIN
+PORT_POOL=5                        # web port = 8000 + this
+APPS_OWNER=applmgr                 # apps owner on the VM
+APPS_GROUP=oinstall                # its group
+INV_LOC=/u01/app/oraInventory      # Oracle inventory on the VM
+RPM_DIR=/u01/ebsclone/rpms         # optional: offline copy of oracle-ebs-server-R12-preinstall and its dependencies
+
+# ---------- Isolation: what the new environment must never reach or mention ----------
+BLOCK_DB_IPS=""                    # extra database listener IPs to block (1521-1529): production nodes, VIPs, SCAN, DR
+BLOCK_ALL_IPS=""                   # extra hosts to block on every port: production apps nodes and load balancer
+LEAK_RE=CHANGEME                   # production names that must never appear in the new configuration (regex, a|b|c)
+PROD_NET_RE=""                     # production network(s) as a regex, e.g. 10\.1\.2\. (settings naming it are refused)
+
+# ---------- Oracle Linux 8 check files ----------
+PATCH_33471111_DIR=/u01/ebsclone/patches/33471111   # unzipped patch 33471111 (Web Tier pre-install check patch)
+ALLOW_RELEASE_SPOOF=no             # yes = old 7.9 release-file workaround instead (not Oracle-documented)
+
+# ---------- Optional ----------
+STALL_MINUTES=20                   # a tool whose log has not grown for this long AND ends on a question is stopped
+
+# ---------- Worked out, do not edit ----------
+SERVICE=ebs_${PDB}
+WEB_PORT=$((8000 + PORT_POOL))
+DB_TAG=${PDB}_${DB_HOST^^}
+STATE_DIR=/u01/ebsclone/state
+LOG_DIR=/u01/ebsclone/logs
