@@ -39,11 +39,12 @@ check "web port $WEB_PORT is free" bash -c "! ss -ltn | grep -q ':$WEB_PORT '"
 say "-- EBS prerequisites (fail on a bare VM until 10_os_prereqs.sh has run)"
 check "oracle-ebs-server-R12-preinstall installed" rpm -q oracle-ebs-server-R12-preinstall
 # KA1007 (1330701.1) section 2.3, Oracle Linux 8 application tier list, plus ksh and libcap (patch 33471111 refhost)
+# and tar, unzip, rsync (the kit copies and unpacks with them; a minimal install has none)
 PKGS="binutils gcc gcc-c++ gdbm.i686 gdbm.x86_64 glibc.i686 glibc.x86_64 glibc-common glibc-devel.i686 glibc-devel.x86_64
 libaio.i686 libaio.x86_64 libaio-devel libgcc.i686 libgcc.x86_64 libgomp libnsl.i686 libnsl.x86_64
 libstdc++.i686 libstdc++.x86_64 libstdc++-devel.i686 libstdc++-devel.x86_64 libXi.i686 libXp.i686 libXp.x86_64 libXtst.i686
 make perl-File-CheckTree redhat-lsb sysstat util-linux libXrender.i686 motif.i686 motif-devel.i686
-ksh libcap"
+ksh libcap tar unzip rsync"
 MISSING=""; for p in $PKGS; do rpm -q "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"; done
 [ -z "$MISSING" ] && ok "all KA1007 OL8 packages present" || bad "missing packages:$MISSING"
 check "user $APPS_OWNER exists in group $APPS_GROUP" bash -c "id -nG $APPS_OWNER | grep -qw $APPS_GROUP"

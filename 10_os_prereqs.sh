@@ -19,6 +19,14 @@ fi
 rpm -q oracle-ebs-server-R12-preinstall >/dev/null || die "preinstall RPM still missing"
 ok "$(rpm -q oracle-ebs-server-R12-preinstall)"
 
+say "-- 1b. tools the kit and EBS use (a minimal Oracle Linux 8 install has none of them)"
+MISS=""; for p in tar unzip rsync; do rpm -q "$p" >/dev/null 2>&1 || MISS="$MISS $p"; done
+if [ -n "$MISS" ]; then
+  if ls "$RPM_DIR"/*.rpm >/dev/null 2>&1; then dnf -y --disablerepo='*' install "$RPM_DIR"/*.rpm >>"$LOG" 2>&1 || true
+  else dnf -y install $MISS >>"$LOG" 2>&1 || true; fi
+fi
+for p in tar unzip rsync; do rpm -q "$p" >/dev/null 2>&1 && ok "$p installed" || die "$p is missing and could not be installed (repository access, or put it in $RPM_DIR)"; done
+
 say "-- 2. the apps owner"
 getent group "$APPS_GROUP" >/dev/null || groupadd -g 54321 "$APPS_GROUP"
 getent group dba >/dev/null || groupadd -g 54322 dba
