@@ -1,23 +1,28 @@
 #!/bin/bash
 # 25_db_register.sh  -  database server, as oracle. Registers the PDB with EBS (txkPostPDBCreationTasks:
 # service, network files, AutoConfig), then repairs what txk is known to break.
-# Usage: 25_db_register.sh [/path/to/appsutil.zip | --from-source]   (--from-source: fetch the zip 05 made on SRC_HOST)
-#   The zip (from admkappsutil.pl on the source apps tier) is only needed when the home's appsutil is older
-#   than the source code level. Without it, the appsutil already in $DB_OH is used.
+# Usage: 25_db_register.sh [/path/to/appsutil.zip]
+#   Without an argument it picks up the appsutil.zip that 05_source_preclone.sh made on the source (one prompt for
+#   the source's root password). No zip there (05 skipped), or no access: it carries on with the appsutil already
+#   in $DB_OH. Either way the step runs; it never stops over this.
 . "$(dirname "$0")/lib.sh"
 need_user oracle
 not_prod
 
 ZIP="${1:-}"
-if [ "$ZIP" = "--from-source" ] && ! is_done appsutil; then
-  # fetch the zip 05_source_preclone.sh made on the source: one root password prompt
-  mkdir -p "$WORK_DIR"; ZIP="$WORK_DIR/appsutil.zip"
-  say "-- 0. fetching appsutil.zip from the source apps host $SRC_HOST"
+[ "$ZIP" = "--from-source" ] && ZIP=""   # older guides passed this; picking up from the source is now the default
+if [ -z "$ZIP" ] && ! is_done appsutil; then
+  mkdir -p "$WORK_DIR"; Z="$WORK_DIR/appsutil.zip"; rm -f "$Z"
+  say "-- 0. database tools from the source: picking up the appsutil.zip that step 05 made on $SRC_HOST, if it is there"
   say "   the next prompt wants the root password of the SOURCE ($SRC_HOST), not of this database server"
-  ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "root@$SRC_HOST" \
-    "cat \$(ls -t $SRC_BASE/fs2/inst/apps/*/admin/out/appsutil.zip | head -1)" > "$ZIP" && unzip -tq "$ZIP" >/dev/null \
-    || die "could not fetch a valid appsutil.zip from $SRC_HOST (did 05_source_preclone.sh run there?)"
-  ok "appsutil.zip fetched ($(du -h "$ZIP" | cut -f1))"
+  ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o NumberOfPasswordPrompts=2 "root@$SRC_HOST" \
+    "f=\$(ls -t $SRC_BASE/fs2/inst/apps/*/admin/out/appsutil.zip 2>/dev/null | head -1); [ -n \"\$f\" ] && cat \"\$f\"" > "$Z" 2>>"$LOG"
+  if [ -s "$Z" ] && unzip -tq "$Z" >/dev/null 2>&1; then
+    ZIP="$Z"; ok "appsutil.zip picked up from the source ($(du -h "$Z" | cut -f1))"
+  else
+    rm -f "$Z"
+    ok "no appsutil.zip picked up (step 05 not run, or no access): using the appsutil already in $DB_OH"
+  fi
 fi
 if [ -n "$ZIP" ] && ! is_done appsutil; then
   say "-- 1. refresh appsutil from $ZIP"

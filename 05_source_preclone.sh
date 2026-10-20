@@ -32,4 +32,4 @@ perl "$AD_TOP/bin/admkappsutil.pl" >>"$LOG" 2>&1
 check "appsutil.zip made" test -s "$INST_TOP/admin/out/appsutil.zip"
 ls -l "$INST_TOP/admin/out/appsutil.zip" | tee -a "$LOG"
 gate
-ok "source stage ready. Next on the DB server: 20_db_prepare.sh, then 25_db_register.sh --from-source (fetches this appsutil.zip)"
+ok "source stage ready. Next on the DB server: 20_db_prepare.sh, then 25_db_register.sh (it picks up this appsutil.zip)"
