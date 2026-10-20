@@ -1,29 +1,38 @@
 #!/bin/bash
 # 25_db_register.sh  -  database server, as oracle. Registers the PDB with EBS (txkPostPDBCreationTasks:
 # service, network files, AutoConfig), then repairs what txk is known to break.
-# Usage: 25_db_register.sh [/path/to/appsutil.zip]
+# Usage (as root): 25_db_register.sh [/path/to/appsutil.zip]
 #   Without an argument it picks up the appsutil.zip that 05_source_preclone.sh made on the source (one prompt for
 #   the source's root password). No zip there (05 skipped), or no access: it carries on with the appsutil already
 #   in $DB_OH. Either way the step runs; it never stops over this.
+# Run it as root. The source's root password is asked here, while the step still has your terminal (after su to
+# oracle, ssh cannot reach the terminal and would answer its own prompt). Then it carries on as oracle by itself.
+ARG="${1:-}"; [ "$ARG" = "--from-source" ] && ARG=""   # older guides passed this; picking up is now the default
+if [ "$(id -u)" -eq 0 ]; then
+  # shellcheck disable=SC1090
+  . "${VARS:-/u01/ebsclone/clone.vars}"
+  if [ -z "$ARG" ] && [ ! -e "$STATE_DIR/25_db_register.appsutil" ] && [ ! -e "$STATE_DIR/25_db_register.txk" ]; then
+    mkdir -p "$WORK_DIR"; chown oracle:oinstall "$WORK_DIR"; Z="$WORK_DIR/appsutil.zip"; rm -f "$Z"
+    echo "Database tools from the source: picking up the appsutil.zip that step 05 made on $SRC_HOST, if it is there."
+    echo "The next prompt wants the root password of the SOURCE ($SRC_HOST), not of this database server."
+    ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "root@$SRC_HOST" \
+      "f=\$(ls -t $SRC_BASE/fs2/inst/apps/*/admin/out/appsutil.zip 2>/dev/null | head -1); [ -n \"\$f\" ] && cat \"\$f\"" > "$Z"
+    if [ -s "$Z" ] && unzip -tq "$Z" >/dev/null 2>&1; then
+      chown oracle:oinstall "$Z"; ARG="$Z"; echo "appsutil.zip picked up from the source ($(du -h "$Z" | cut -f1))."
+    else
+      rm -f "$Z"; ARG="--no-source"
+      echo "No appsutil.zip picked up (step 05 not run, or no access): carrying on with the appsutil already in $DB_OH."
+    fi
+  fi
+  exec su - oracle -c "$(readlink -f "$0") $ARG"
+fi
+
 . "$(dirname "$0")/lib.sh"
 need_user oracle
 not_prod
 
-ZIP="${1:-}"
-[ "$ZIP" = "--from-source" ] && ZIP=""   # older guides passed this; picking up from the source is now the default
-if [ -z "$ZIP" ] && ! is_done appsutil; then
-  mkdir -p "$WORK_DIR"; Z="$WORK_DIR/appsutil.zip"; rm -f "$Z"
-  say "-- 0. database tools from the source: picking up the appsutil.zip that step 05 made on $SRC_HOST, if it is there"
-  say "   the next prompt wants the root password of the SOURCE ($SRC_HOST), not of this database server"
-  ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o NumberOfPasswordPrompts=2 "root@$SRC_HOST" \
-    "f=\$(ls -t $SRC_BASE/fs2/inst/apps/*/admin/out/appsutil.zip 2>/dev/null | head -1); [ -n \"\$f\" ] && cat \"\$f\"" > "$Z" 2>>"$LOG"
-  if [ -s "$Z" ] && unzip -tq "$Z" >/dev/null 2>&1; then
-    ZIP="$Z"; ok "appsutil.zip picked up from the source ($(du -h "$Z" | cut -f1))"
-  else
-    rm -f "$Z"
-    ok "no appsutil.zip picked up (step 05 not run, or no access): using the appsutil already in $DB_OH"
-  fi
-fi
+ZIP="$ARG"
+[ "$ZIP" = "--no-source" ] && { ZIP=""; ok "using the appsutil already in $DB_OH"; }
 if [ -n "$ZIP" ] && ! is_done appsutil; then
   say "-- 1. refresh appsutil from $ZIP"
   [ -r "$ZIP" ] || die "cannot read $ZIP"

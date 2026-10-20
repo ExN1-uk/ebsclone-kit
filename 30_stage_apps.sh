@@ -1,7 +1,26 @@
 #!/bin/bash
-# 30_stage_apps.sh  -  new apps VM, as applmgr. Copies the pre-cloned apps files from the source host,
+# 30_stage_apps.sh  -  new apps VM, as root (it switches to applmgr by itself). Copies the pre-cloned apps files from the source host,
 # checks the clone stage, and points the move plan at the NEW database (without this the new apps tier
 # would connect to the source's database, which for a PROD-line source means PRODUCTION).
+# Run it as root. The one question for the source's root password is asked here, while the step still has your
+# terminal (after su to another user, ssh cannot reach the terminal and would answer its own prompt). Then the
+# step carries on as the apps owner by itself.
+if [ "$(id -u)" -eq 0 ]; then
+  # shellcheck disable=SC1090
+  . "${VARS:-/u01/ebsclone/clone.vars}"
+  K="$(getent passwd "$APPS_OWNER" | cut -d: -f6)/.ssh/id_ebsclone_src"
+  su - "$APPS_OWNER" -c "mkdir -p ~/.ssh && chmod 700 ~/.ssh && { [ -f '$K' ] || ssh-keygen -q -t ed25519 -N '' -C ebsclone-tmp-\$(hostname -s) -f '$K'; }"
+  if [ ! -e "$STATE_DIR/30_stage_apps.copy" ] && ! su - "$APPS_OWNER" -c \
+       "ssh -n -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -i '$K' $SRC_USER@$SRC_HOST true" 2>/dev/null; then
+    echo "One-time: a temporary copy key goes on the source; it removes itself after the copy."
+    echo "The next prompt wants the root password of the SOURCE ($SRC_HOST), not of this VM."
+    ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "root@$SRC_HOST" \
+      "su - $SRC_USER -c 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'" < "$K.pub" \
+      || { echo "STOP: could not put the copy key on $SRC_HOST (wrong root password?). Run this step again."; exit 1; }
+  fi
+  exec su - "$APPS_OWNER" -c "$(readlink -f "$0") $*"
+fi
+
 . "$(dirname "$0")/lib.sh"
 need_user "$APPS_OWNER"
 not_prod
@@ -9,15 +28,8 @@ not_prod
 if ! is_done copy; then
   say "-- 1. ssh access to $SRC_USER@$SRC_HOST"
   K="$HOME/.ssh/id_ebsclone_src"
-  [ -f "$K" ] || ssh-keygen -q -t ed25519 -N "" -C "ebsclone-tmp-$(hostname -s)" -f "$K"
-  # a temporary key for the copy: installed with ONE root password prompt, removed again by itself after the copy
-  if ! ssh -n -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -i "$K" "$SRC_USER@$SRC_HOST" true 2>/dev/null; then
-    say "   one-time: a temporary copy key goes on the source. The next prompt wants the root password of the SOURCE ($SRC_HOST), not of this VM"
-    ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "root@$SRC_HOST" \
-      "su - $SRC_USER -c 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'" < "$K.pub" \
-      || die "could not install the copy key on $SRC_HOST (wrong root password?)"
-    ssh -n -o BatchMode=yes -o ConnectTimeout=10 -i "$K" "$SRC_USER@$SRC_HOST" true || die "still no key access to $SRC_USER@$SRC_HOST"
-  fi
+  ssh -n -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -i "$K" "$SRC_USER@$SRC_HOST" true 2>/dev/null \
+    || die "no key access to $SRC_USER@$SRC_HOST: run this step as root (/u01/ebsclone/kit/30_stage_apps.sh), it sets the key up"
   ok "key access to the source"
 
   say "-- 2. what the source holds"
