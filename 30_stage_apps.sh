@@ -68,14 +68,14 @@ if ! knows_ol8 "$SP" && [ -n "${PATCH_33471111_DIR:-}" ]; then
   ok "stage check files replaced from patch 33471111 (original kept as $SP.pre33471111)"
 fi
 if knows_ol8 "$SP"; then
-  ok "stage check files know Oracle Linux 8: no release spoof needed"
+  ok "stage check files know Oracle Linux 8"
   echo "no" > "$STATE_DIR/need_spoof"
 elif [ "$ALLOW_RELEASE_SPOOF" = "yes" ]; then
   warn "stage has no OL8-aware check files: patch 33471111 is not on the source."
   warn "ALLOW_RELEASE_SPOOF=yes: 40 will set the release files to 7.9 for adcfgclone only and put them back."
   echo "yes" > "$STATE_DIR/need_spoof"
 else
-  die "the stage's OS check files do not know Oracle Linux 8 (patch 33471111 is not on the source). Unzip patch 33471111 on this VM and set PATCH_33471111_DIR to it, then rerun this step. (Or ALLOW_RELEASE_SPOOF=yes for the old 7.9 workaround.)"
+  die "the Oracle Linux 8 check files are missing. Unzip patch 33471111 on this VM and set PATCH_33471111_DIR to it, then rerun this step."
 fi
 
 say "-- 6. move plan: point the data sources at $SERVICE on $DB_SCAN"

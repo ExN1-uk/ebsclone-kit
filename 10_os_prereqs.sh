@@ -1,6 +1,6 @@
 #!/bin/bash
 # 10_os_prereqs.sh  -  new apps VM, as root. Installs the EBS 12.2 OS prerequisites (KA1007 / 1330701.1).
-# Safe to rerun. Oracle's way: the oracle-ebs-server-R12-preinstall RPM. No OL7 packages, no release spoof.
+# Safe to rerun. Oracle's way: the oracle-ebs-server-R12-preinstall RPM.
 . "$(dirname "$0")/lib.sh"
 need_root
 not_prod

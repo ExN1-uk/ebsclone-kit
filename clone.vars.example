@@ -42,7 +42,7 @@ PROD_NET_RE=""                     # production network(s) as a regex, e.g. 10\.
 
 # ---------- Oracle Linux 8 check files ----------
 PATCH_33471111_DIR=/u01/ebsclone/patches/33471111   # unzipped patch 33471111 (Web Tier pre-install check patch)
-ALLOW_RELEASE_SPOOF=no             # yes = old 7.9 release-file workaround instead (not Oracle-documented)
+ALLOW_RELEASE_SPOOF=no             # leave at no
 
 # ---------- Optional ----------
 STALL_MINUTES=20                   # a tool whose log has not grown for this long AND ends on a question is stopped
