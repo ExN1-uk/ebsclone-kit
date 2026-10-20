@@ -80,6 +80,7 @@ else
 fi
 
 say "-- 8. time synchronisation (chronyd)"
+rpm -q chrony >/dev/null 2>&1 || dnf -y install chrony >>"$LOG" 2>&1 || true   # a minimal install has no chrony
 if rpm -q chrony >/dev/null 2>&1; then
   systemctl enable --now chronyd >>"$LOG" 2>&1 && ok "chronyd enabled and started"
   sleep 20; timedatectl show -p NTPSynchronized --value | grep -qx yes && ok "clock synchronised" \
