@@ -12,7 +12,7 @@ BEFORE="$STATE_DIR/${PDB}_before.txt"
 MODE=$(sed -n 's/^MODE //p' "$BEFORE" 2>/dev/null)
 [ -n "$MODE" ] || warn "no record of how $PDB was found ($BEFORE): it will be left MOUNTED"
 # check the restore point exists BEFORE closing anything (a second run, or one after --final, must not close the PDB)
-N=$(printf "set heading off feedback off\nselect count(*) from v\$restore_point where name='%s';\n" "$RESTORE_POINT" | sys_sql | tr -d ' \n')
+N=$(printf "set heading off feedback off\nselect count(*) from v\$restore_point where name='%s';\n" "$RESTORE_POINT" | sys_sql | tr -d '[:space:]')   # sqlplus pads numbers with a TAB
 [ "$N" = "1" ] || die "restore point $RESTORE_POINT does not exist (already flashed back and dropped with --final?). Nothing changed."
 confirm "Flash $PDB back to $RESTORE_POINT? Everything done to it since is lost." || die "not confirmed"
 sys_sql <<SQL | tee -a "$LOG"
