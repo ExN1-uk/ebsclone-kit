@@ -72,7 +72,10 @@ for f in "$ORACLE_HOME/network/admin/sqlnet.ora" "$ORACLE_HOME/network/admin/$DB
 done
 
 say "-- 4. close the PDBs txk opened, test file writing and the APPS login"
-for p in $OTHER_PDBS; do echo "alter pluggable database $p close immediate;" ; done | sys_sql | tee -a "$LOG"
+# close only the ones that are open (a rerun finds them closed already)
+for p in $OTHER_PDBS; do
+  printf "begin for r in (select 1 from v\$pdbs where name='%s' and open_mode<>'MOUNTED') loop execute immediate 'alter pluggable database %s close immediate'; end loop; end;\n/\n" "$p" "$p"
+done | sys_sql | tee -a "$LOG"
 OUT=$(sys_sql <<SQL
 set heading off feedback off pages 0 lines 200
 select 'PDB '||name||' '||open_mode from v\$pdbs;
