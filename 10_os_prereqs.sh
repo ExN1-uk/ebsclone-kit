@@ -13,7 +13,10 @@ elif ls "$RPM_DIR"/*.rpm >/dev/null 2>&1; then
   dnf -y --disablerepo='*' install "$RPM_DIR"/*.rpm >>"$LOG" 2>&1 || die "offline install failed, see $LOG"
 else
   say "   installing from the Oracle Linux 8 repositories (needs yum.oracle.com or a local mirror)"
-  dnf -y install oracle-ebs-server-R12-preinstall >>"$LOG" 2>&1 \
+  # Oracle ships the preinstall package in the Addons repository, which Oracle Linux 8 defines but leaves disabled
+  ADDONS=""; dnf repolist --all 2>/dev/null | grep -q '^ol8_addons' && ADDONS="--enablerepo=ol8_addons"
+  [ -n "$ADDONS" ] && say "   (switching on Oracle's ol8_addons repository for this install only)"
+  dnf -y $ADDONS install oracle-ebs-server-R12-preinstall >>"$LOG" 2>&1 \
     || die "dnf could not install the preinstall RPM. Either give the VM repository access, or download it with its dependencies into $RPM_DIR and rerun."
 fi
 rpm -q oracle-ebs-server-R12-preinstall >/dev/null || die "preinstall RPM still missing"
