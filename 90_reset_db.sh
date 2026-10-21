@@ -24,7 +24,14 @@ esac
 confirm "Flash $PDB back to $RESTORE_POINT? Everything done to it since is lost." || die "not confirmed"
 sys_sql <<SQL | tee -a "$LOG"
 whenever sqlerror exit failure
-alter pluggable database ${PDB} close immediate;
+begin
+  for r in (select 1 from v\$pdbs where name='${PDB}' and open_mode<>'MOUNTED') loop
+    execute immediate 'alter pluggable database ${PDB} close immediate';
+  end loop;
+end;
+/
+-- the saved open state names services created after the restore point; reopening would try to start them
+alter pluggable database ${PDB} discard state;
 flashback pluggable database ${PDB} to restore point ${RESTORE_POINT};
 alter pluggable database ${PDB} open resetlogs;
 alter session set container=${PDB};
