@@ -2,7 +2,7 @@
 # The same file goes on the database server, the new apps VM and (when step 05 is used) the source apps host.
 
 # ---------- Database (already exists: we configure it, we do not copy it) ----------
-PDB=CHANGEME                       # the PDB the new apps tier will run on
+PDB=CHANGEME                       # the PDB the new apps tier will run on (8 characters or fewer: an EBS limit)
 CDB_NAME=CHANGEME                  # the container database that holds it
 CDB_SID=CHANGEME                   # its instance name on the database server
 CDB_UNIQUE=CHANGEME                # its db_unique_name
@@ -20,8 +20,6 @@ WORK_DIR=/u01/ebsclone/work        # working folder on the database server
 SRC_HOST=CHANGEME                  # source apps host (name or IP)
 SRC_USER=applmgr                   # apps owner on the source
 SRC_BASE=CHANGEME                  # source apps base folder, e.g. /u01/EBSPROD (holds fs1, fs2, fs_ne)
-SRC_SERVICE=CHANGEME               # database service the source move plan names (grep SERVICE_NAME in its moveplan.xml)
-SRC_DB_HOST_RE=CHANGEME            # regex for the database host(s) the source move plan names
 
 # ---------- Target VM ----------
 APPS_HOST=CHANGEME                 # short host name of the target VM (full name must be 30 characters or less)
@@ -33,12 +31,6 @@ APPS_OWNER=applmgr                 # apps owner on the VM
 APPS_GROUP=oinstall                # its group
 INV_LOC=/u01/app/oraInventory      # Oracle inventory on the VM
 RPM_DIR=/u01/ebsclone/rpms         # optional: offline copy of oracle-ebs-server-R12-preinstall and its dependencies
-
-# ---------- Isolation: what the new environment must never reach or mention ----------
-BLOCK_DB_IPS=""                    # extra database listener IPs to block (1521-1529): production nodes, VIPs, SCAN, DR
-BLOCK_ALL_IPS=""                   # extra hosts to block on every port: production apps nodes and load balancer
-LEAK_RE=CHANGEME                   # production names that must never appear in the new configuration (regex, a|b|c)
-PROD_NET_RE=""                     # production network(s) as a regex, e.g. 10\.1\.2\. (settings naming it are refused)
 
 # ---------- Oracle Linux 8 check files ----------
 PATCH_33471111_DIR=/u01/ebsclone/patches/33471111   # unzipped patch 33471111 (Web Tier pre-install check patch)

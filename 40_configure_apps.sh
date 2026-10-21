@@ -10,22 +10,21 @@ CLONEBIN="$NEW_BASE/fs2/EBSapps/comn/clone/bin"
 [ -f "$CLONEBIN/adcfgclone.pl" ] || die "no clone stage under $NEW_BASE (run 30_stage_apps.sh)"
 
 say "-- 1. isolation: this VM must never reach the source's or PROD/DR's database listeners or apps hosts"
-# Blocked: the addresses listed in clone.vars, PLUS every host the source itself names (its database host and
-# scan from the move plan and pairs file, its apps host, admin host and web entry), resolved now. So the
-# source is blocked even when nobody listed it. The new database and this VM are never blocked.
+# Blocked: every database, host and address the source's own configuration names (30 recorded them from its move
+# plan, pairs file and context file), resolved now. Nobody has to list production: whatever the source points at
+# is what the copy must never reach. The new database and this VM are never blocked.
 resolve() { getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u; }
-fqdn() { case "$1" in *.*) echo "$1";; ?*) echo "$1.$NET_DOMAIN";; esac; }
-SP="$STATE_DIR/source_pairs.txt"; P0="$NEW_BASE/fs2/EBSapps/comn/clone/FMW/WLS/plan/moveplan.xml.orig"
-SRC_DB_NAMES=$( { grep -oE 'HOST=[^)]*' "$P0" 2>/dev/null | cut -d= -f2; fqdn "$(sed -n 's/^s_dbhost=//p' "$SP" 2>/dev/null)"; } | sort -u)
-SRC_APP_NAMES=$( { echo "$SRC_HOST"; for k in s_atName s_admhost s_webentryhost; do fqdn "$(sed -n "s/^$k=//p" "$SP" 2>/dev/null)"; done; } | sort -u)
+[ -s "$STATE_DIR/source_db_hosts" ] || die "no record of what the source points at: rerun 30_stage_apps.sh"
+SRC_DB_NAMES=$(cat "$STATE_DIR/source_db_hosts"); SRC_APP_NAMES=$(cat "$STATE_DIR/source_app_hosts")
+LEAK_RE=$(source_leak_re)
 KEEP=$( { resolve "$DB_SCAN"; resolve "$DB_HOST.$NET_DOMAIN"; echo "$DB_IP"; echo "$APPS_IP"; } | sort -u)
 pick() { for ip in "$@"; do echo "$KEEP" | grep -qx "$ip" && { warn "$ip belongs to the new database or this VM: not blocked" >&2; continue; }; echo "$ip"; done | sort -u; }
-DB_LIST=$(pick $BLOCK_DB_IPS $(for n in $SRC_DB_NAMES; do resolve "$n"; done))
-ALL_LIST=$(pick $BLOCK_ALL_IPS $(for n in $SRC_APP_NAMES; do resolve "$n"; done))
+DB_LIST=$(pick $(for n in $SRC_DB_NAMES; do resolve "$n"; done))
+ALL_LIST=$(pick $(for n in $SRC_APP_NAMES; do resolve "$n"; done))
 say "   source names found: $(echo $SRC_DB_NAMES $SRC_APP_NAMES)"
 say "   database listeners blocked (1521-1529): $(echo $DB_LIST)"
 say "   hosts blocked (all ports): $(echo $ALL_LIST)"
-[ -n "$DB_LIST" ] || die "nothing to block: no source database found and BLOCK_DB_IPS is empty"
+[ -n "$DB_LIST" ] || die "nothing to block: none of the source's database names resolves from here"
 
 # The rules live in their own chain, written as a script that a systemd unit re-applies at every boot.
 # 95_reset_apps.sh removes chain, script and unit.
@@ -49,8 +48,8 @@ ExecStart=$ISO
 WantedBy=multi-user.target
 EOF
 # rules from older kit versions sat directly in OUTPUT: drop them, the chain replaces them
-for ip in $DB_LIST $BLOCK_DB_IPS; do while iptables -D OUTPUT -p tcp -d "$ip" --dport 1521:1529 -j REJECT 2>/dev/null; do :; done; done
-for ip in $ALL_LIST $BLOCK_ALL_IPS; do while iptables -D OUTPUT -d "$ip" -j REJECT 2>/dev/null; do :; done; done
+for ip in $DB_LIST; do while iptables -D OUTPUT -p tcp -d "$ip" --dport 1521:1529 -j REJECT 2>/dev/null; do :; done; done
+for ip in $ALL_LIST; do while iptables -D OUTPUT -d "$ip" -j REJECT 2>/dev/null; do :; done; done
 systemctl daemon-reload && systemctl enable ebsclone-isolation.service >>"$LOG" 2>&1 && systemctl restart ebsclone-isolation.service \
   || die "could not apply the isolation rules (systemctl status ebsclone-isolation)"
 for ip in $DB_LIST; do check "$ip:1521 blocked" bash -c "! timeout 3 bash -c '</dev/tcp/$ip/1521' 2>/dev/null"; done

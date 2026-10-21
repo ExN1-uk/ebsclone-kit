@@ -56,7 +56,7 @@ if [ $KEEP = yes ]; then
   ok "FMW_Home and inst removed, copied files kept: rerun from 40"
 else
   rm -rf "$NEW_BASE"
-  rm -f "$STATE_DIR"/30_* "$STATE_DIR"/40_* "$STATE_DIR"/60_* "$STATE_DIR"/*pairs*.txt
+  rm -f "$STATE_DIR"/30_* "$STATE_DIR"/40_* "$STATE_DIR"/60_* "$STATE_DIR"/*pairs*.txt "$STATE_DIR"/source_*
   ok "$NEW_BASE removed: rerun from 30"
 fi
 
@@ -65,12 +65,8 @@ systemctl disable --now ebsclone-isolation.service >>"$LOG" 2>&1
 rm -f /etc/systemd/system/ebsclone-isolation.service /usr/local/sbin/ebsclone-isolation.sh; systemctl daemon-reload
 while iptables -D OUTPUT -j EBSCLONE 2>/dev/null; do :; done
 iptables -F EBSCLONE 2>/dev/null; iptables -X EBSCLONE 2>/dev/null
-# rules from older kit versions sat directly in OUTPUT
-for ip in $BLOCK_DB_IPS; do while iptables -D OUTPUT -p tcp -d "$ip" --dport 1521:1529 -j REJECT 2>/dev/null; do :; done; done
-for ip in $BLOCK_ALL_IPS; do while iptables -D OUTPUT -d "$ip" -j REJECT 2>/dev/null; do :; done; done
 check "isolation chain gone" bash -c "! iptables -S EBSCLONE >/dev/null 2>&1"
 check "isolation boot unit gone" test ! -e /etc/systemd/system/ebsclone-isolation.service
-N=0; for ip in $BLOCK_DB_IPS $BLOCK_ALL_IPS; do iptables -S OUTPUT | grep -q -- "-d $ip/32 .*REJECT" && N=$((N+1)); done
-[ $N -eq 0 ] && ok "isolation rules removed" || bad "$N isolation rules still present"
+check "isolation rules removed" bash -c "! iptables -S OUTPUT | grep -q EBSCLONE"
 gate
 ok "apps tier reset. On the database server: 90_reset_db.sh"

@@ -45,13 +45,61 @@ confirm() {  # confirm "question" -> returns 0 only on an explicit yes
 # read a password without echo, into the named variable
 ask_secret() { local __v; read -rs -p "$2: " __v; echo; printf -v "$1" '%s' "$__v"; }
 
-# Refuse to run against anything that looks like production.
+# The copy must never BE what it was copied from. 30_stage_apps.sh records every database, host and service the
+# source's own configuration names (state/source_*); a step that finds the new database or this VM among them stops.
+# Nobody has to list production by hand: whatever the source points at is, by definition, what the copy must not.
 not_prod() {
-  local s="$PDB $SERVICE $CDB_NAME $DB_HOST $DB_SCAN $DB_IP $APPS_HOST"
-  local re="$LEAK_RE"; [ -n "${PROD_NET_RE:-}" ] && re="$re|$PROD_NET_RE"
-  if echo "$s" | grep -qiE "$re"; then
-    die "settings point at production or DR ($s). This kit only builds non-production copies."
+  local n f
+  [ "${#PDB}" -le 8 ] || die "PDB name $PDB is ${#PDB} characters: E-Business Suite keeps the database name in an 8-character column (FND_DATABASES.DB_NAME), so registration would fail. Use a PDB named with 8 characters or fewer."
+  for f in source_db_hosts source_app_hosts; do
+    [ -s "$STATE_DIR/$f" ] || continue
+    for n in "$DB_SCAN" "$DB_HOST.$NET_DOMAIN" "$DB_IP" "$APPS_HOST.$NET_DOMAIN" "$APPS_IP"; do
+      grep -qix "$n" "$STATE_DIR/$f" && die "$n is a host the source itself uses: the copy would point at the source. This kit only builds copies."
+    done
+  done
+  if [ -s "$STATE_DIR/source_services" ] && grep -qix "$SERVICE" "$STATE_DIR/source_services"; then
+    die "service $SERVICE is the source's own database service: the copy would point at the source."
   fi
+  return 0
+}
+
+# harvest_source <move plan as copied>: every database, host and service the source's own configuration names
+# (move plan, pairs file, context file), written to state/source_db_hosts, source_app_hosts, source_services and
+# source_leak_re. 30 points the copy away from all of them, 40 blocks them and checks none survive.
+harvest_source() {
+  local P0="$1" SP="$STATE_DIR/source_pairs.txt" SX="$STATE_DIR/source_context.xml" d k
+  d=$(printf '%s' "$NET_DOMAIN" | sed 's/\./\\./g')
+  fq() { case "$1" in *.*) echo "$1";; ?*) echo "$1.$NET_DOMAIN";; esac; }
+  { grep -ohE 'HOST=[^)]*' "$P0" "$SX" 2>/dev/null | cut -d= -f2 | tr -d ' '
+    fq "$(sed -n 's/^s_dbhost=//p' "$SP")"
+  } | tr '[:upper:]' '[:lower:]' | grep . | sort -u > "$STATE_DIR/source_db_hosts"
+  grep -ohE 'SERVICE_NAME=[^)]*' "$P0" "$SX" 2>/dev/null | cut -d= -f2 | tr -d ' ' | grep . | sort -u > "$STATE_DIR/source_services"
+  { echo "$SRC_HOST"
+    for k in s_atName s_admhost s_webentryhost s_smtphost; do fq "$(sed -n "s/^$k=//p" "$SP")"; done
+    grep -ohiE "\b[a-z0-9][a-z0-9-]*\.$d\b" "$P0" "$SP" "$SX" 2>/dev/null
+    # literal addresses, only on the networks of the servers involved (version numbers look like addresses too)
+    grep -ohE '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b' "$P0" "$SX" 2>/dev/null \
+      | grep -E "^($( { echo "$SRC_HOST"; getent ahostsv4 "$SRC_HOST" | awk '{print $1}'; echo "$DB_IP"; echo "$APPS_IP"; } \
+          | grep -oE '^[0-9]+\.[0-9]+\.' | sort -u | sed 's/\./\\./g' | paste -sd'|'))"
+  } | tr '[:upper:]' '[:lower:]' | grep . | sort -u | grep -vxFf "$STATE_DIR/source_db_hosts" > "$STATE_DIR/source_app_hosts"
+  { sed 's/\..*//' "$STATE_DIR/source_db_hosts" "$STATE_DIR/source_app_hosts"
+    cat "$STATE_DIR/source_services"
+    for k in s_dbSid s_dbGlnam s_contextname; do sed -n "s/^$k=//p" "$SP"; done
+  } | grep -E '^[A-Za-z][A-Za-z0-9_-]{2,}$' | sort -u | paste -sd'|' > "$STATE_DIR/source_leak_re"
+}
+source_leak_re() {
+  local r; r=$(cat "$STATE_DIR/source_leak_re" 2>/dev/null)
+  [ -n "$r" ] || die "no record of the source's names (state/source_leak_re): rerun 30_stage_apps.sh"
+  echo "$r"
+}
+
+# pdb_in_use: the machines that have user sessions in the PDB right now, other than this database server
+pdb_in_use() {
+  sys_sql <<SQL | grep -v '^[[:space:]]*$'
+set heading off feedback off pages 0 lines 200
+select distinct s.machine from v\$session s join v\$pdbs p on p.con_id=s.con_id
+ where p.name='${PDB}' and s.type='USER' and lower(s.machine) not like lower('$(hostname -s)%');
+SQL
 }
 
 # run_watched <logfile> <command...>

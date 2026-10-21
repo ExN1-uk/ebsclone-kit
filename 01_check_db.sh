@@ -25,6 +25,9 @@ check "archivelog mode (needed for a guaranteed restore point)" bash -c "echo \"
 FRA=$(echo "$OUT" | awk '/^FRA/{print $2}')
 check "recovery area below 80% (now ${FRA}%)" test "${FRA:-100}" -lt 80
 echo "$OUT" | grep -q "^RP $RESTORE_POINT" && ok "restore point $RESTORE_POINT exists" || warn "restore point $RESTORE_POINT not taken yet (20_db_prepare.sh takes it)"
+U=$(pdb_in_use | tr '
+' ' ')
+[ -z "$U" ] && ok "no application server is using $PDB right now" || bad "$PDB is in use right now from: $U(a live system, or a copy whose apps tier still runs: stop that first)"
 echo "$OUT" | grep -q '^VIOL ERROR' && warn "plug-in violations of type ERROR: usually means datapatch has not run on this PDB (20 handles it)"
 
 say "-- EBS database-tier tools in $DB_OH"

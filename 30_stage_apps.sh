@@ -53,6 +53,9 @@ if ! is_done copy; then
   [ "$(echo "$SRCP" | grep -c .)" -eq 1 ] || die "expected one <context>_run.txt pairs file on the source, found: ${SRCP:-none}"
   scp -q -i "$K" -o BatchMode=yes "$SRC_USER@$SRC_HOST:$SRCP" "$STATE_DIR/source_pairs.txt" || die "could not fetch $SRCP"
   ok "source pairs file saved as $STATE_DIR/source_pairs.txt"
+  # its full context file sits next to it: it names every host and database the source talks to
+  scp -q -i "$K" -o BatchMode=yes "$SRC_USER@$SRC_HOST:${SRCP%_run.txt}.xml" "$STATE_DIR/source_context.xml" \
+    && ok "source context file saved as $STATE_DIR/source_context.xml" || warn "could not fetch ${SRCP%_run.txt}.xml: only the move plan and pairs file are read"
   done_mark copy
   # the copy key removes itself from the source, then is deleted here
   ssh -n -i "$K" -o BatchMode=yes "$SRC_USER@$SRC_HOST" "sed -i '/ebsclone-tmp-$(hostname -s)\$/d' ~/.ssh/authorized_keys" \
@@ -91,20 +94,31 @@ else
   die "the Oracle Linux 8 check files are missing. Unzip patch 33471111 on this VM and set PATCH_33471111_DIR to it, then rerun this step."
 fi
 
-say "-- 6. move plan: point the data sources at $SERVICE on $DB_SCAN"
+say "-- 6. what the source points at, and the move plan pointed at this environment instead"
 P="$C/FMW/WLS/plan/moveplan.xml"
 [ -f "$P.orig" ] || cp -p "$P" "$P.orig"
 cp -p "$P.orig" "$P"
+# Everything the source's own configuration names is what the copy must never reach or keep: no list to type in.
+harvest_source "$P.orig"
+not_prod
+LEAK_RE=$(source_leak_re)
+say "   source databases: $(tr '\n' ' ' < "$STATE_DIR/source_db_hosts")"
+say "   source services:  $(tr '\n' ' ' < "$STATE_DIR/source_services")"
+say "   source hosts:     $(tr '\n' ' ' < "$STATE_DIR/source_app_hosts")"
 say "   before: $(grep -oE 'HOST=[^)]*|SERVICE_NAME=[^)]*' "$P" | sort -u | tr '\n' ' ')"
-sed -i -E "s#HOST=${SRC_DB_HOST_RE}#HOST=${DB_SCAN}#g; s#SERVICE_NAME=${SRC_SERVICE}#SERVICE_NAME=${SERVICE}#g" "$P"
-# the plan also names the source apps host (server listen addresses, machine): this VM instead
-SRC_APP=$(sed -n 's/^s_atName=//p' "$STATE_DIR/source_pairs.txt")
-[ -n "$SRC_APP" ] || die "no s_atName in $STATE_DIR/source_pairs.txt"
-sed -i -E "s#>${SRC_APP}(\.${NET_DOMAIN})?<#>${APPS_HOST}\1<#g" "$P"
+# every data source goes to the new database
+sed -i -E "s#HOST=[^)]*#HOST=${DB_SCAN}#g; s#SERVICE_NAME=[^)]*#SERVICE_NAME=${SERVICE}#g" "$P"
+# every apps-side host in the plan (server listen addresses and machines, of every source node) becomes this VM.
+# A source cloned from a multi-node system keeps its other nodes' managed servers: on this single VM they are
+# created but never started (this node's context only enables its own), and now they name nothing outside it.
+D=$(printf '%s' "$NET_DOMAIN" | sed 's/\./\\./g')
+for h in $(grep -vE '^[0-9.]+$' "$STATE_DIR/source_app_hosts" | sed 's/\..*//' | sort -u); do
+  sed -i -E "s#>${h}(\.${D})?<#>${APPS_HOST}\1<#gI; s#>${h}_#>${APPS_HOST}_#gI" "$P"
+done
 say "   apps host values: $(grep -oE "<value>${APPS_HOST}[^<]*</value>" "$P" | sort | uniq -c | tr -s ' ' | tr '\n' ' ')"
 say "   after:  $(grep -oE 'HOST=[^)]*|SERVICE_NAME=[^)]*' "$P" | sort -u | tr '\n' ' ')"
 N=$(grep -ciE "$LEAK_RE" "$P")
-[ "$N" -eq 0 ] && ok "move plan has no source/PROD references" || { grep -niE "$LEAK_RE" "$P" | head -10 | tee -a "$LOG"; bad "$N source/PROD references left in the move plan"; }
+[ "$N" -eq 0 ] && ok "move plan names nothing of the source's" || { grep -niE "$LEAK_RE" "$P" | head -10 | tee -a "$LOG"; bad "$N source references left in the move plan"; }
 check "every data source now names $SERVICE" bash -c "! grep -oE 'SERVICE_NAME=[^)]*' '$P' | grep -v 'SERVICE_NAME=$SERVICE' | grep -q ."
 gate
 ok "staged. Next: 40_configure_apps.sh"

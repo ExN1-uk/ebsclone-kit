@@ -9,6 +9,9 @@ not_prod
 db_env
 mkdir -p "$WORK_DIR"
 
+U=$(pdb_in_use | tr '
+' ' ')
+[ -z "$U" ] || die "$PDB is in use right now from: $U(a live system, or a copy whose apps tier still runs: stop that first)"
 echo
 echo "This changes $PDB in $CDB_NAME on $(hostname). It belongs to the DBA: you must have their OK."
 confirm "Do you have the DBA's go to use $PDB and take restore point $RESTORE_POINT?" || die "not confirmed"
