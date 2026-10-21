@@ -67,6 +67,9 @@ fi
 if ! is_done txk; then
 say "-- 2. txkPostPDBCreationTasks (about 12 minutes, restarts the whole CDB: every PDB in it blinks)"
 [ -n "$OTHER_PDBS" ] && warn "the CDB restarts open every PDB in it; step 4 closes $OTHER_PDBS again"
+# the outbound folder behind the EBS_UTL_FILE_DIR_<PDB>_OUT directory object: AutoConfig's txkCfgUtlfileDir
+# stops with "Directory ... does not exist" if it is missing (a PDB never set up in this home has none)
+mkdir -p "$ORACLE_HOME/appsutil/outbound/$DB_TAG" "$ORACLE_HOME/temp/$PDB"
 TXKLOG="$WORK_DIR/txk_${PDB}_$(date +%H%M%S).log"
 # passwords go on stdin (APPS, then SYSTEM): never on the command line, never in a file
 printf '%s\n%s\n' "$AP" "$SP" | WATCH_STDIN=1 run_watched "$TXKLOG" perl txkPostPDBCreationTasks.pl -dboraclehome="$ORACLE_HOME" \
@@ -76,8 +79,8 @@ RC=$?
 unset SP
 [ $RC -eq 0 ] || warn "txk exited rc=$RC"
 if ! grep -q 'AutoConfig completed successfully' "$TXKLOG"; then
-  grep -i 'Directory object does not exist' -r "$ORACLE_HOME/appsutil/log/$DB_TAG" 2>/dev/null | tail -3 | tee -a "$LOG"
-  die "AutoConfig did not complete successfully. A missing directory object is the usual cause: create it in $PDB, then rerun AutoConfig ($ORACLE_HOME/appsutil/scripts/$DB_TAG/adautocfg.sh)."
+  grep -rhiE 'does not exist|ERRORMSG' "$ORACLE_HOME/appsutil/log/$DB_TAG" "$ORACLE_HOME"/appsutil/log/TXK_POST_PDB_* 2>/dev/null | sort -u | tail -5 | tee -a "$LOG"
+  die "AutoConfig did not complete successfully: the lines above say why (a missing folder or directory object is the usual cause). Fix it, then rerun this step."
 fi
 ok "txk + AutoConfig completed"
 done_mark txk
