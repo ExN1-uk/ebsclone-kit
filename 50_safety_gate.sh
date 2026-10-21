@@ -17,7 +17,7 @@ select host, lower_port, upper_port, principal from dba_host_aces where host not
 select db_link, host from dba_db_links;
 select component_name, component_status, startup_mode from apps.fnd_svc_components where component_type='WF_MAILER';
 SQL
-confirm "Remove ALL host ACEs above, set the mailer to manual and stopped, and clear smtp_out_server for $PDB?" || die "gate not applied: do NOT start the apps tier"
+confirm "Remove ALL host ACEs and database links above, set the mailer to manual and stopped, and clear smtp_out_server for $PDB?" || die "gate not applied: do NOT start the apps tier"
 
 sys_sql <<SQL | tee -a "$LOG"
 whenever sqlerror exit failure
@@ -34,6 +34,21 @@ begin
   for r in (select host, lower_port, upper_port, acl from dba_network_acls where host not in ('*','localhost') and acl is not null) loop
     begin dbms_network_acl_admin.unassign_acl(acl=>r.acl, host=>r.host, lower_port=>r.lower_port, upper_port=>r.upper_port);
     exception when others then null; end;
+  end loop;
+  -- database links: every one points at whatever the source talked to. Public ones are dropped directly; a
+  -- private one only by its owner, so a throwaway procedure in the owner's schema drops it and is removed again.
+  for r in (select owner, db_link from dba_db_links) loop
+    begin
+      if r.owner = 'PUBLIC' then
+        execute immediate 'drop public database link "'||r.db_link||'"';
+      else
+        execute immediate 'create or replace procedure "'||r.owner||'".ebsclone_drop_link as begin execute immediate ''drop database link "'||r.db_link||'"''; end;';
+        execute immediate 'begin "'||r.owner||'".ebsclone_drop_link; end;';
+        execute immediate 'drop procedure "'||r.owner||'".ebsclone_drop_link';
+      end if;
+      dbms_output.put_line('dropped database link '||r.owner||'.'||r.db_link);
+    exception when others then dbms_output.put_line('could not drop '||r.owner||'.'||r.db_link||': '||sqlerrm);
+    end;
   end loop;
   -- UTL_MAIL/UTL_SMTP relay: the copy carries the source's PDB-level smtp_out_server (often the live
   -- Office 365 relay). Reset it for this PDB only; ORA-32010 = it was not set, which is fine.
@@ -63,9 +78,6 @@ check "no host ACEs left" bash -c "echo \"$OUT\" | grep -q '^ACES 0'"
 check "mailer stopped and manual" bash -c "! echo \"$OUT\" | grep '^MAILER' | grep -vq 'STOPPED MANUAL'"
 check "every pending request on hold" bash -c "echo \"$OUT\" | grep -q '^UNHELD 0'"
 check "smtp_out_server empty" bash -c "echo \"$OUT\" | grep -q '^SMTP (empty)'"
-if echo "$OUT" | grep -q '^LINK'; then
-  warn "database links exist (listed above). From this VM the PROD/DR listeners are blocked, but review each one:"
-  warn "drop any that point at production: alter session set container=$PDB; drop database link <name>;"
-fi
+check "no database links left" bash -c "! echo \"$OUT\" | grep -q '^LINK'"
 gate
 ok "safety gate applied. Next: 60_start_verify.sh on the VM"
