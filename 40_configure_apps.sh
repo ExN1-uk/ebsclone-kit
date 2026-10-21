@@ -130,7 +130,7 @@ J="$NEW_BASE/fs2/FMW_Home/user_projects/domains/EBS_domain/config/jdbc"
 grep -rhoE 'jdbc:oracle:thin:@[^<]*' "$J"/*.xml | sort -u | tee -a "$LOG"
 check "every JDBC URL names $SERVICE" bash -c "! grep -rhoE 'jdbc:oracle:thin:@[^<]*' '$J'/*.xml | grep -v '$SERVICE' | grep -q ."
 check "no source/PROD names in the data sources" bash -c "! grep -rhoE 'jdbc:oracle:thin:@[^<]*' '$J'/*.xml | grep -qiE '$LEAK_RE'"
-CTX=$(ls "$NEW_BASE"/fs2/inst/apps/*/appl/admin/*.xml 2>/dev/null | head -1)
+CTX="$NEW_BASE/fs2/inst/apps/${PDB}_${APPS_HOST}/appl/admin/${PDB}_${APPS_HOST}.xml"   # by name: other xml files sit beside it
 check "context s_dbSid = $PDB" grep -q "oa_var=\"s_dbSid\">$PDB<" "$CTX"
 check "context s_webport = $WEB_PORT" grep -qE "oa_var=\"s_webport\"[^>]*>$WEB_PORT<" "$CTX"
 N=$(grep -ciE "$LEAK_RE" "$CTX"); [ "$N" -eq 0 ] && ok "context file clean" || warn "$N lines in the context file still mention source/PROD names: review them ($CTX)"
